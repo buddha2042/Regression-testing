@@ -6,177 +6,135 @@ export default function QaLandingPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 font-sans selection:bg-blue-500/30">
-      {/* Background Glow */}
-      <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full"></div>
-        <div className="absolute bottom-[10%] right-[10%] w-[30%] h-[30%] bg-indigo-600/5 blur-[100px] rounded-full"></div>
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans flex flex-col relative overflow-hidden">
+      
+      {/* Soft Background Accents */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
+        <div className="absolute top-[-5%] left-[-5%] w-[40%] h-[40%] bg-blue-100/40 blur-[120px] rounded-full"></div>
+        <div className="absolute bottom-[10%] right-[10%] w-[30%] h-[30%] bg-indigo-50/40 blur-[100px] rounded-full"></div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 pb-16 md:pb-24">
-        
-        {/* Top Navigation */}
-        <nav className="py-8 mb-4 flex items-center justify-between border-b border-white/5">
-          {/* Left Side: Portal Identity */}
+      {/* Top Branding Bar */}
+      <nav className="w-full border-b border-slate-200 bg-white/60 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
-             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
-                QA
-             </div>
-             <span className="hidden sm:inline text-slate-500 text-xs font-mono uppercase tracking-[0.2em]">
-                Automation Portal
-             </span>
-          </div>
-
-          {/* Right Side: DXC Logo */}
-          <div className="relative group">
-            {/* Soft glow behind logo */}
-            <div className="absolute -inset-2 bg-white/5 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition duration-500"></div>
             <img 
               src="https://dxc.com/content/dam/dxc/projects/dxc-com/global/logos/dxc/dxc-logo-png-4x.png" 
               alt="DXC Technology" 
-              className="h-8 md:h-10 w-auto relative brightness-0 invert" 
+              className="h-7 w-auto" 
             />
-          </div>
-        </nav>
-
-        {/* Header Section */}
-        <header className="mt-12 mb-16 border-l-4 border-blue-600 pl-6 py-2">
-          <div className="flex items-center gap-3 mb-4">
-            <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">
-              Internal Lab
+            <div className="h-4 w-px bg-slate-300 hidden sm:block"></div>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hidden sm:block">
+              Quality Assurance
             </span>
           </div>
-          <h1 className="text-5xl md:text-6xl font-black text-white mb-4 tracking-tight italic">
-            QA <span className="text-blue-500">Automation</span>
+
+          <div className="bg-blue-600 text-white font-black px-3 py-1 rounded-lg text-[10px] uppercase tracking-widest shadow-lg shadow-blue-200">
+            Studio
+          </div>
+        </div>
+      </nav>
+
+      <div className="max-w-4xl mx-auto w-full px-6 py-12 md:py-16 flex-grow flex flex-col justify-center relative">
+        
+        {/* REFINED SMALL HEADER */}
+        <header className="text-center mb-12">
+          {/* Animated Status Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 mb-6 transition-all hover:bg-blue-100/50 cursor-default">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+            </span>
+            <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">Automation Engine v4.2</span>
+          </div>
+
+          <h1 className="text-3xl md:text-4xl font-black text-slate-900 mb-3 tracking-tight uppercase italic leading-none">
+            Data <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500">Integrity Studio</span>
           </h1>
-          <p className="text-slate-400 text-lg md:text-xl max-w-2xl leading-relaxed">
-            Ensuring data integrity across Sisense environments. 
-            Validate <span className="text-slate-100 font-medium">Regular vs. Refactor</span> data with precision.
+          
+          <p className="text-slate-500 text-sm md:text-base max-w-lg mx-auto font-medium leading-relaxed opacity-80">
+            Automated JAQL validation and structural audit reporting <br className="hidden md:block" /> 
+            for Sisense and Elasticube environments.
           </p>
         </header>
 
-        {/* Actions Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
-
-          {/* Widget Comparison Card (Primary) */}
-          <div
+        {/* Main Action Buttons */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-20">
+          
+          {/* Compare Widget */}
+          <button
             onClick={() => router.push('/widget')}
-            className="relative group cursor-pointer"
+            className="group relative bg-white border border-slate-200 p-8 rounded-[28px] transition-all hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-100 text-left shadow-sm overflow-hidden"
           >
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-            <div className="relative bg-slate-900 border border-slate-800 rounded-2xl p-8 hover:border-blue-500/50 transition-all h-full flex flex-col shadow-2xl">
-              <div className="flex items-center justify-between mb-8">
-                <div className="p-3 bg-blue-600/10 rounded-xl">
-                  <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-                <span className="bg-blue-500/10 text-blue-400 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest border border-blue-500/20">
-                  Primary Tool
-                </span>
-              </div>
-
-              <h2 className="text-3xl font-bold text-white mb-4 group-hover:text-blue-400 transition-colors">
-                Widget Comparison
-              </h2>
-              <p className="text-slate-400 mb-8 leading-relaxed">
-                Compare actual widget result sets. Detect row mismatches, value discrepancies, and data structural shifts.
-              </p>
-
-              <div className="space-y-4 mb-10 flex-grow">
-                {[
-                  "Cell-level value validation",
-                  "Missing row identification",
-                  "Automated diffing reports",
-                  "Excel-ready export module"
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 text-sm text-slate-300">
-                    <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                    {item}
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 text-blue-400 font-bold group-hover:translate-x-2 transition-transform">
-                Launch Comparator
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
-              </div>
+            <h2 className="text-xl font-black text-slate-900 mb-1 uppercase italic tracking-tight">
+              Widget <br/><span className="text-blue-600">Comparison</span>
+            </h2>
+            <p className="text-[13px] text-slate-400 group-hover:text-slate-600 mb-6 transition-colors font-medium">Verify live JAQL results.</p>
+            <div className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-[10px] uppercase transition-all group-hover:scale-105 group-hover:bg-blue-700 shadow-lg shadow-blue-200">
+              Launch Audit →
             </div>
-          </div>
+          </button>
 
-          {/* Dashboard Viewer Card (Optional) */}
-          <div
-            onClick={() => router.push('/dashboard-view')}
-            className="group cursor-pointer flex flex-col"
+          {/* View Dashboard */}
+          <button
+            onClick={() => router.push('/dashfile')}
+            className="group relative bg-white border border-slate-200 p-8 rounded-[28px] transition-all hover:border-slate-400 hover:shadow-2xl hover:shadow-slate-200 text-left shadow-sm overflow-hidden"
           >
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-8 hover:border-slate-600 transition-all h-full flex flex-col shadow-xl">
-              <div className="flex items-center justify-between mb-8">
-                <div className="p-3 bg-slate-800 rounded-xl">
-                  <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                  </svg>
-                </div>
-                <span className="bg-slate-800 text-slate-500 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">
-                  Metadata
-                </span>
-              </div>
-
-              <h2 className="text-3xl font-bold text-white mb-4 group-hover:text-slate-300 transition-colors">
-                Dashboard Viewer
-              </h2>
-              <p className="text-slate-400 mb-8 leading-relaxed">
-                Inspect the underlying dashboard metadata. Useful for debugging widget IDs, layout positions, and filter logic.
-              </p>
-
-              <div className="space-y-4 mb-10 flex-grow">
-                {[
-                  "Raw dashboard structure",
-                  "Inspect layout & widget OIDs",
-                  "Download JSON snapshots",
-                  "Verify filter definitions"
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 text-sm text-slate-500">
-                    <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
-                    {item}
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 text-slate-500 font-bold group-hover:text-slate-300 transition-colors">
-                Open Metadata Tool
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
-              </div>
+            <h2 className="text-xl font-black text-slate-900 mb-1 uppercase italic tracking-tight">
+              Metadata <br/><span className="text-slate-400">Inspector</span>
+            </h2>
+            <p className="text-[13px] text-slate-400 group-hover:text-slate-600 mb-6 transition-colors font-medium">Map IDs and JSON layouts.</p>
+            <div className="inline-flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl font-bold text-[10px] uppercase transition-all group-hover:bg-black shadow-lg shadow-slate-300">
+              Open Viewer →
             </div>
-          </div>
-
+          </button>
         </div>
 
-        {/* Footer */}
-        <footer className="mt-24 pt-8 border-t border-slate-800 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="text-slate-500 text-xs font-mono uppercase tracking-widest">
-            DXC Internal Tooling • v2.4.0
+        {/* --- VISUAL DIAGRAM SECTION --- */}
+        <section className="relative">
+          <div className="absolute inset-0 flex items-center" aria-hidden="true">
+            <div className="w-full border-t border-slate-200"></div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-            <span className="text-slate-400 text-sm">Sisense API Connected</span>
+          <div className="relative flex justify-center mb-12">
+            <span className="bg-[#f8fafc] px-8 text-[10px] font-black uppercase tracking-[0.5em] text-slate-400">
+              Audit Pipeline
+            </span>
           </div>
-          <div className="text-slate-500 text-xs italic">
-            Developed by Buddha Kharel
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Step cards are now smaller and more modern */}
+            {[
+              { title: 'Mapping', desc: 'Sync OIDs & Tokens', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+              { title: 'Sync Fetch', desc: 'Dual-stream Extraction', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4' },
+              { title: 'Comparison', desc: 'Recursive JSON Diff', icon: 'M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2' },
+              { title: 'Reporting', desc: 'Excel & Audit Summary', icon: 'M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', primary: true }
+            ].map((step, i) => (
+              <div key={i} className="text-center group">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3 transition-all shadow-sm ${step.primary ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-white border border-slate-200 group-hover:border-blue-400 text-blue-600'}`}>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={step.icon} />
+                  </svg>
+                </div>
+                <h4 className="text-[10px] font-bold text-slate-900 uppercase mb-0.5">{step.title}</h4>
+                <p className="text-[9px] text-slate-400 font-medium leading-tight">{step.desc}</p>
+              </div>
+            ))}
           </div>
+        </section>
+
+        {/* Simplified Footer */}
+        <footer className="mt-20 flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest border-t border-slate-200 pt-8">
+          <div className="flex items-center gap-4">
+            <span>DXC Technology • 2026</span>
+            <span className="text-blue-600 font-black tracking-tighter">v4.2.0-STABLE</span>
+          </div>
+          <div className="italic font-normal text-slate-300 tracking-tight">Developed by Buddha Kharel</div>
         </footer>
       </div>
 
       <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        body {
-          font-family: 'Inter', sans-serif;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
       `}</style>
     </div>
   );
