@@ -1,39 +1,24 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQa } from '@/context/QaContext';
+import { useQa, ComparisonItem, QaInputs } from '@/context/QaContext';
 import { 
-  Search, 
-  CheckCircle2, 
-  XCircle, 
-  Download, 
-  ArrowRight, 
-  Database, 
-  Zap,
-  Activity,
-  FileJson,
-  Layers
+  Search, CheckCircle2, XCircle, Download, ArrowRight, 
+  Database, Zap, FileJson, Layers, Filter, Copy
 } from 'lucide-react';
 
 type Environment = 'regular' | 'refactor';
 
-interface ComparisonItem {
-  path: string;
-  regularValue: any;
-  refactorValue: any;
-  isMatch: boolean;
-}
-
 export default function WidgetComparePage() {
   const router = useRouter();
-  const { setQaState } = useQa();
+  const { setQaState, updateQaState } = useQa();
   const resultsRef = useRef<HTMLDivElement>(null);
 
   /* ================================
      STATE MANAGEMENT
   ================================ */
-  const [inputs, setInputs] = useState({
+  const [inputs, setInputs] = useState<QaInputs>({
     regUrl: '', regToken: '', regDashId: '', regWidgetId: '',
     refUrl: '', refToken: '', refDashId: '', refWidgetId: ''
   });
@@ -41,16 +26,19 @@ export default function WidgetComparePage() {
   const [regularData, setRegularData] = useState<any | null>(null);
   const [refactorData, setRefactorData] = useState<any | null>(null);
   const [comparisonReport, setComparisonReport] = useState<ComparisonItem[]>([]);
-
-  const [regLoading, setRegLoading] = useState(false);
-  const [refLoading, setRefLoading] = useState(false);
-  const [compareLoading, setCompareLoading] = useState(false);
+  
+  const [loading, setLoading] = useState({ regular: false, refactor: false, compare: false });
   const [error, setError] = useState('');
+  const [showDiffOnly, setShowDiffOnly] = useState(false);
   const [hasCompared, setHasCompared] = useState(false);
+
+  // Filtered report for the UI
+  const filteredReport = useMemo(() => 
+    showDiffOnly ? comparisonReport.filter(r => !r.isMatch) : comparisonReport
+  , [comparisonReport, showDiffOnly]);
 
   /* ============================================================
      DEEP COMPARISON ENGINE
-     Ensures nulls, empty arrays [], and nested keys are caught.
      ============================================================ */
   const getFullComparison = (obj1: any, obj2: any, path = ''): ComparisonItem[] => {
     const isLeaf = (val: any) => 
@@ -59,7 +47,6 @@ export default function WidgetComparePage() {
       (Array.isArray(val) && val.length === 0) || 
       (typeof val === 'object' && Object.keys(val).length === 0);
 
-    // If both are leaf nodes (primitive or empty container), compare them
     if (isLeaf(obj1) || isLeaf(obj2)) {
       return [{
         path: path || 'root',
@@ -69,9 +56,7 @@ export default function WidgetComparePage() {
       }];
     }
 
-    // Otherwise, iterate through all unique keys in both objects
     const allKeys = Array.from(new Set([...Object.keys(obj1), ...Object.keys(obj2)]));
-
     return allKeys.flatMap(key => {
       const currentPath = path ? `${path}.${key}` : key;
       return getFullComparison(obj1[key], obj2[key], currentPath);
@@ -79,8 +64,12 @@ export default function WidgetComparePage() {
   };
 
   /* ================================
-     API HANDLERS
+     HANDLERS
   ================================ */
+  const handleInputChange = (field: keyof QaInputs, value: string) => {
+    setInputs(prev => ({ ...prev, [field]: value }));
+  };
+
   const handleFetch = async (env: Environment) => {
     const isReg = env === 'regular';
     const config = isReg ? 
@@ -88,12 +77,12 @@ export default function WidgetComparePage() {
       { url: inputs.refUrl, token: inputs.refToken, dId: inputs.refDashId, wId: inputs.refWidgetId };
 
     if (!config.url || !config.token) {
-      setError(`All credentials required for ${env} fetch.`);
+      setError(`Credentials required for ${env} fetch.`);
       return;
     }
 
     setError('');
-    isReg ? setRegLoading(true) : setRefLoading(true);
+    setLoading(prev => ({ ...prev, [env]: true }));
 
     try {
       const res = await fetch('/api/widget/fetch', {
@@ -109,49 +98,47 @@ export default function WidgetComparePage() {
       });
 
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
+      if (!res.ok) throw new Error(json.error || 'Fetch failed');
 
       isReg ? setRegularData(json.data) : setRefactorData(json.data);
-      setHasCompared(false); // Reset comparison state if new data is fetched
+      setHasCompared(false);
     } catch (e: any) {
       setError(e.message);
     } finally {
-      isReg ? setRegLoading(false) : setRefLoading(false);
+      setLoading(prev => ({ ...prev, [env]: false }));
     }
   };
 
   const runComparison = () => {
     if (!regularData || !refactorData) return;
-    setCompareLoading(true);
+    setLoading(prev => ({ ...prev, compare: true }));
 
     const report = getFullComparison(regularData, refactorData);
-    
     setComparisonReport(report);
     setHasCompared(true);
-    setCompareLoading(false);
+    setLoading(prev => ({ ...prev, compare: false }));
 
-    // Save to global context
-    setQaState({
-      inputs, regularData, refactorData,
+    // Sync to Global Context
+    setQaState(prev => ({
+      ...prev,
+      inputs,
+      regularData,
+      refactorData,
       comparisonReport: report,
       phase: 'DATA_AUDIT_PENDING',
       createdAt: new Date().toISOString()
-    });
+    }));
 
-    // Scroll into view
-    setTimeout(() => {
-      resultsRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
-  const handleExportCSV = (e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
+  const handleExportCSV = () => {
     const headers = ['Status', 'Path', 'Legacy Value', 'Refactor Value'].join(',');
     const rows = comparisonReport.map(r => [
       r.isMatch ? 'MATCH' : 'DIFF',
       `"${r.path}"`,
-      `"${JSON.stringify(r.regularValue).replace(/"/g, '""')}"`,
-      `"${JSON.stringify(r.refactorValue).replace(/"/g, '""')}"`
+      `"${JSON.stringify(r.regularValue)?.replace(/"/g, '""')}"`,
+      `"${JSON.stringify(r.refactorValue)?.replace(/"/g, '""')}"`
     ].join(',')).join('\n');
 
     const blob = new Blob([headers + '\n' + rows], { type: 'text/csv' });
@@ -189,7 +176,8 @@ export default function WidgetComparePage() {
           {(['regular', 'refactor'] as Environment[]).map(env => {
             const isReg = env === 'regular';
             const data = isReg ? regularData : refactorData;
-            const isLoading = isReg ? regLoading : refLoading;
+            const isLoading = isReg ? loading.regular : loading.refactor;
+            const prefix = isReg ? 'reg' : 'ref';
 
             return (
               <div key={env} className="space-y-6">
@@ -198,32 +186,30 @@ export default function WidgetComparePage() {
                     <Database size={14} /> {isReg ? 'Source: Legacy (Old)' : 'Target: Refactor (New)'}
                   </h2>
                   <div className="space-y-3">
-                    <input className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="API Base URL" value={isReg ? inputs.regUrl : inputs.refUrl} onChange={e => setInputs({...inputs, [isReg ? 'regUrl' : 'refUrl']: e.target.value})} />
-                    <input type="password" className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Bearer Token" value={isReg ? inputs.regToken : inputs.refToken} onChange={e => setInputs({...inputs, [isReg ? 'regToken' : 'refToken']: e.target.value})} />
+                    <InputField placeholder="API Base URL" value={inputs[`${prefix}Url` as keyof QaInputs]} onChange={v => handleInputChange(`${prefix}Url` as keyof QaInputs, v)} />
+                    <InputField placeholder="Bearer Token" type="password" value={inputs[`${prefix}Token` as keyof QaInputs]} onChange={v => handleInputChange(`${prefix}Token` as keyof QaInputs, v)} />
                     <div className="grid grid-cols-2 gap-4">
-                      <input className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm" placeholder="Dashboard ID" value={isReg ? inputs.regDashId : inputs.refDashId} onChange={e => setInputs({...inputs, [isReg ? 'regDashId' : 'refDashId']: e.target.value})} />
-                      <input className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm" placeholder="Widget ID" value={isReg ? inputs.regWidgetId : inputs.refWidgetId} onChange={e => setInputs({...inputs, [isReg ? 'regWidgetId' : 'refWidgetId']: e.target.value})} />
+                      <InputField placeholder="Dashboard ID" value={inputs[`${prefix}DashId` as keyof QaInputs]} onChange={v => handleInputChange(`${prefix}DashId` as keyof QaInputs, v)} />
+                      <InputField placeholder="Widget ID" value={inputs[`${prefix}WidgetId` as keyof QaInputs]} onChange={v => handleInputChange(`${prefix}WidgetId` as keyof QaInputs, v)} />
                     </div>
                     <button 
                       onClick={() => handleFetch(env)} 
                       disabled={isLoading}
-                      className={`w-full py-4 rounded-2xl text-white font-black text-xs uppercase tracking-widest shadow-lg shadow-slate-200 transition-all active:scale-95 ${isReg ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'} disabled:opacity-50`}
+                      className={`w-full py-4 rounded-2xl text-white font-black text-xs uppercase tracking-widest transition-all active:scale-95 ${isReg ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'} disabled:opacity-50 shadow-lg shadow-slate-100`}
                     >
                       {isLoading ? 'Fetching Data...' : `Fetch ${env} payload`}
                     </button>
                   </div>
                 </section>
 
-                {/* JSON PREVIEW BOX (Scrollable) */}
                 {data && (
                   <div className="bg-[#0F172A] rounded-[2rem] border border-slate-800 overflow-hidden shadow-2xl">
                     <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-[#1e293b]/50">
                       <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2 italic">
-                        <FileJson size={14} className="text-blue-400" /> Fetched Payload
+                        <FileJson size={14} className="text-blue-400" /> Payload Received
                       </span>
-                      <span className="text-[10px] text-blue-400 font-mono italic">{Object.keys(data).length} Root Keys</span>
                     </div>
-                    <pre className="p-6 text-[12px] text-emerald-400 font-mono overflow-y-auto max-h-[350px] custom-scrollbar leading-relaxed">
+                    <pre className="p-6 text-[12px] text-emerald-400 font-mono overflow-y-auto max-h-[300px] custom-scrollbar leading-relaxed">
                       {JSON.stringify(data, null, 2)}
                     </pre>
                   </div>
@@ -237,11 +223,11 @@ export default function WidgetComparePage() {
         <div className="flex flex-col items-center justify-center py-12 border-y border-slate-200">
           <button 
             onClick={runComparison} 
-            disabled={!regularData || !refactorData || compareLoading} 
+            disabled={!regularData || !refactorData || loading.compare} 
             className="group px-16 py-6 bg-blue-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-blue-200 transition-all hover:-translate-y-1 active:scale-95 flex items-center gap-4 disabled:bg-slate-300 disabled:shadow-none"
           >
-            <Zap className={compareLoading ? 'animate-pulse' : ''} fill="currentColor" />
-            {compareLoading ? 'ANALYIZING PAYLOADS...' : 'RUN FULL AUDIT COMPARISON'}
+            <Zap className={loading.compare ? 'animate-pulse' : ''} fill="currentColor" />
+            {loading.compare ? 'ANALYZING PAYLOADS...' : 'RUN FULL AUDIT COMPARISON'}
           </button>
           {error && <p className="mt-4 text-rose-600 font-bold bg-rose-50 px-4 py-2 rounded-xl border border-rose-100 flex items-center gap-2"><XCircle size={16}/> {error}</p>}
         </div>
@@ -251,57 +237,58 @@ export default function WidgetComparePage() {
           <div ref={resultsRef} className="space-y-10 animate-in fade-in slide-in-from-bottom-10 duration-700">
             
             {/* STATS CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <StatCard label="Total Audit Points" val={comparisonReport.length} icon={<Search className="text-slate-300"/>} />
-              <StatCard label="Critical Mismatches" val={comparisonReport.filter(r => !r.isMatch).length} color="text-rose-600" icon={<XCircle className="text-rose-400"/>} />
-              <StatCard label="Identical Matches" val={comparisonReport.filter(r => r.isMatch).length} color="text-emerald-600" icon={<CheckCircle2 className="text-emerald-400"/>} />
+              <StatCard label="Mismatches" val={comparisonReport.filter(r => !r.isMatch).length} color="text-rose-600" icon={<XCircle className="text-rose-400"/>} />
+              <StatCard label="Matches" val={comparisonReport.filter(r => r.isMatch).length} color="text-emerald-600" icon={<CheckCircle2 className="text-emerald-400"/>} />
+              <div className="bg-white p-8 rounded-[2rem] border border-slate-200 flex flex-col justify-center items-center gap-2">
+                <p className="text-[10px] font-black uppercase text-slate-400">View Filter</p>
+                <button 
+                  onClick={() => setShowDiffOnly(!showDiffOnly)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${showDiffOnly ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}
+                >
+                  <Filter size={14} /> {showDiffOnly ? 'Diff Only' : 'Show All'}
+                </button>
+              </div>
             </div>
 
-            {/* AUDIT LOG TABLE (Scrollable) */}
+            {/* AUDIT LOG TABLE */}
             <div className="bg-white border border-slate-200 rounded-[2.5rem] shadow-xl overflow-hidden">
               <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-20">
-                <div>
-                  <h3 className="font-black text-2xl italic text-slate-800">Audit Logs</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Full key-value deep mapping</p>
-                </div>
-                <button 
-                  type="button" 
-                  onClick={handleExportCSV} 
-                  className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-slate-200"
-                >
+                <h3 className="font-black text-2xl italic text-slate-800">Audit Logs</h3>
+                <button onClick={handleExportCSV} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-slate-200">
                   <Download size={14} /> Export CSV
                 </button>
               </div>
 
-              <div className="overflow-x-auto overflow-y-auto max-h-[600px] custom-scrollbar">
+              <div className="overflow-x-auto max-h-[600px] custom-scrollbar">
                 <table className="w-full text-left border-collapse">
                   <thead className="sticky top-0 bg-slate-50 z-10">
                     <tr className="border-b">
                       <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">Status</th>
                       <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">Object Path</th>
-                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">Legacy Value (Reg)</th>
-                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">New Value (Ref)</th>
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">Legacy Value</th>
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">Refactor Value</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {comparisonReport.map((r, i) => (
+                    {filteredReport.map((r, i) => (
                       <tr key={i} className={`group hover:bg-slate-50 transition-colors ${!r.isMatch ? 'bg-rose-50/20' : ''}`}>
-                        <td className="p-6 align-top">
+                        <td className="p-6">
                            <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2.5 py-1 rounded-full border ${r.isMatch ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
-                            {r.isMatch ? <CheckCircle2 size={10}/> : <XCircle size={10}/>} {r.isMatch ? 'MATCH' : 'DIFF'}
+                            {r.isMatch ? 'MATCH' : 'DIFF'}
                           </span>
                         </td>
-                        <td className="p-6 align-top">
-                          <code className="text-[11px] font-mono font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200 group-hover:bg-white transition-colors">
-                            {r.path}
-                          </code>
+                        <td className="p-6">
+                          <div className="flex items-center gap-2">
+                            <code className="text-[11px] font-mono font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">{r.path}</code>
+                            <button onClick={() => navigator.clipboard.writeText(r.path)} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-500">
+                              <Copy size={12}/>
+                            </button>
+                          </div>
                         </td>
-                        <td className="p-6 align-top text-[11px] font-mono text-slate-500 break-words max-w-[250px] leading-relaxed opacity-80">
-                          {JSON.stringify(r.regularValue)}
-                        </td>
-                        <td className={`p-6 align-top text-[11px] font-mono break-words max-w-[250px] leading-relaxed ${!r.isMatch ? 'text-rose-600 font-black' : 'text-slate-500 opacity-80'}`}>
-                          {JSON.stringify(r.refactorValue)}
-                        </td>
+                        <td className="p-6 text-[11px] font-mono text-slate-500 truncate max-w-[200px]">{JSON.stringify(r.regularValue)}</td>
+                        <td className={`p-6 text-[11px] font-mono truncate max-w-[200px] ${!r.isMatch ? 'text-rose-600 font-black' : 'text-slate-500'}`}>{JSON.stringify(r.refactorValue)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -312,14 +299,25 @@ export default function WidgetComparePage() {
         )}
       </main>
 
-      {/* CUSTOM SCROLLBAR CSS */}
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
     </div>
+  );
+}
+
+/* ================================
+   HELPER COMPONENTS
+================================ */
+
+function InputField({ onChange, ...props }: any) {
+  return (
+    <input 
+      {...props}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+    />
   );
 }
 

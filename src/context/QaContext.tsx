@@ -26,29 +26,45 @@ export interface QaInputs {
 }
 
 export type QaPhase =
-  | 'INIT'                 // Nothing started
-  | 'WIDGET_QA_RUNNING'    // Fetching / comparing widget JSON
-  | 'WIDGET_QA_DONE'       // Widget comparison completed
-  | 'DATA_AUDIT_PENDING'   // Context review (Phase 2 – current)
-  | 'DATA_COMPARE_RUNNING'// Future: data-level comparison
-  | 'DATA_COMPARE_DONE';  // Future: certification ready
+  | 'INIT'
+  | 'WIDGET_QA_RUNNING'
+  | 'WIDGET_QA_DONE'
+  | 'DATA_AUDIT_PENDING'
+  | 'DATA_COMPARE_RUNNING'
+  | 'DATA_COMPARE_DONE';
 
 export interface QaState {
-  /* Inputs & context */
+  /* ============================
+     Connection & Auth
+  ============================ */
   inputs: QaInputs | null;
+  jwtToken: string | null;
 
-  /* Raw widget JSON */
+  /* ============================
+     Widget Logic (Phase 1)
+  ============================ */
   regularData: any | null;
   refactorData: any | null;
-
-  /* Phase 1 result */
   comparisonReport: ComparisonItem[];
 
-  /* Phase control */
+  /* ============================
+     Phase Control
+  ============================ */
   phase: QaPhase;
 
-  /* Metadata */
+  /* ============================
+     Metadata
+  ============================ */
   createdAt: string | null;
+
+  /* ============================
+     Future: Data Compare
+  ============================ */
+  dataCompareResult?: {
+    regularRowCount: number;
+    refactorRowCount: number;
+    mismatches?: number;
+  };
 }
 
 /* ================================
@@ -56,8 +72,13 @@ export interface QaState {
 ================================ */
 
 interface QaContextType extends QaState {
-  setQaState: (state: QaState) => void;
+  /** Full replace – use sparingly */
+  setQaState: React.Dispatch<React.SetStateAction<QaState>>;
+
+  /** Partial merge – preferred */
   updateQaState: (partial: Partial<QaState>) => void;
+
+  /** Reset everything */
   resetQa: () => void;
 }
 
@@ -67,9 +88,12 @@ interface QaContextType extends QaState {
 
 const defaultState: QaState = {
   inputs: null,
+  jwtToken: null,
+
   regularData: null,
   refactorData: null,
   comparisonReport: [],
+
   phase: 'INIT',
   createdAt: null
 };
@@ -92,12 +116,10 @@ export const QaProvider = ({ children }: { children: React.ReactNode }) => {
       value={{
         ...state,
 
-        /* Replace entire QA state (used after Phase 1) */
-        setQaState: (newState: QaState) => {
-          setState(newState);
-        },
+        /* Full replace (advanced use only) */
+        setQaState: setState,
 
-        /* Partial updates (safe for future phases) */
+        /* Safe partial update (default) */
         updateQaState: (partial: Partial<QaState>) => {
           setState(prev => ({
             ...prev,
@@ -105,7 +127,7 @@ export const QaProvider = ({ children }: { children: React.ReactNode }) => {
           }));
         },
 
-        /* Full reset */
+        /* Reset QA flow */
         resetQa: () => {
           setState(defaultState);
         }
