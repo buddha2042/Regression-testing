@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQa } from '@/context/QaContext';
 import { 
@@ -12,8 +12,8 @@ import {
   Database, 
   Zap,
   Activity,
-  ChevronDown,
-  Eye
+  FileJson,
+  Layers
 } from 'lucide-react';
 
 type Environment = 'regular' | 'refactor';
@@ -28,66 +28,67 @@ interface ComparisonItem {
 export default function WidgetComparePage() {
   const router = useRouter();
   const { setQaState } = useQa();
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   /* ================================
-     INPUT STATE
+     STATE MANAGEMENT
   ================================ */
   const [inputs, setInputs] = useState({
     regUrl: '', regToken: '', regDashId: '', regWidgetId: '',
     refUrl: '', refToken: '', refDashId: '', refWidgetId: ''
   });
 
-  /* ================================
-     DATA STATE
-  ================================ */
   const [regularData, setRegularData] = useState<any | null>(null);
   const [refactorData, setRefactorData] = useState<any | null>(null);
   const [comparisonReport, setComparisonReport] = useState<ComparisonItem[]>([]);
 
-  /* ================================
-     UI STATE
-  ================================ */
   const [regLoading, setRegLoading] = useState(false);
   const [refLoading, setRefLoading] = useState(false);
   const [compareLoading, setCompareLoading] = useState(false);
   const [error, setError] = useState('');
   const [hasCompared, setHasCompared] = useState(false);
-  const [showRaw, setShowRaw] = useState({ regular: true, refactor: true });
 
-  /* ================================
-     RECURSIVE COMPARISON
-  ================================ */
+  /* ============================================================
+     DEEP COMPARISON ENGINE
+     Ensures nulls, empty arrays [], and nested keys are caught.
+     ============================================================ */
   const getFullComparison = (obj1: any, obj2: any, path = ''): ComparisonItem[] => {
-    const keys = Array.from(new Set([...Object.keys(obj1 || {}), ...Object.keys(obj2 || {})]));
+    const isLeaf = (val: any) => 
+      val === null || 
+      typeof val !== 'object' || 
+      (Array.isArray(val) && val.length === 0) || 
+      (typeof val === 'object' && Object.keys(val).length === 0);
 
-    return keys.flatMap(key => {
+    // If both are leaf nodes (primitive or empty container), compare them
+    if (isLeaf(obj1) || isLeaf(obj2)) {
+      return [{
+        path: path || 'root',
+        regularValue: obj1,
+        refactorValue: obj2,
+        isMatch: JSON.stringify(obj1) === JSON.stringify(obj2)
+      }];
+    }
+
+    // Otherwise, iterate through all unique keys in both objects
+    const allKeys = Array.from(new Set([...Object.keys(obj1), ...Object.keys(obj2)]));
+
+    return allKeys.flatMap(key => {
       const currentPath = path ? `${path}.${key}` : key;
-      const val1 = obj1?.[key];
-      const val2 = obj2?.[key];
-
-      if (typeof val1 === 'object' && typeof val2 === 'object' && val1 !== null && val2 !== null && !Array.isArray(val1)) {
-        return getFullComparison(val1, val2, currentPath);
-      }
-
-      return {
-        path: currentPath,
-        regularValue: val1,
-        refactorValue: val2,
-        isMatch: JSON.stringify(val1) === JSON.stringify(val2)
-      };
+      return getFullComparison(obj1[key], obj2[key], currentPath);
     });
   };
 
+  /* ================================
+     API HANDLERS
+  ================================ */
   const handleFetch = async (env: Environment) => {
     const isReg = env === 'regular';
-    const { regUrl, regToken, regDashId, regWidgetId, refUrl, refToken, refDashId, refWidgetId } = inputs;
+    const config = isReg ? 
+      { url: inputs.regUrl, token: inputs.regToken, dId: inputs.regDashId, wId: inputs.regWidgetId } :
+      { url: inputs.refUrl, token: inputs.refToken, dId: inputs.refDashId, wId: inputs.refWidgetId };
 
-    const config = isReg 
-      ? { url: regUrl, token: regToken, dashId: regDashId, wid: regWidgetId }
-      : { url: refUrl, token: refToken, dashId: refDashId, wid: refWidgetId };
-
-    if (!config.url || !config.token || !config.dashId || !config.wid) {
-      setError(`Please complete all ${env} fields.`);
+    if (!config.url || !config.token) {
+      setError(`All credentials required for ${env} fetch.`);
       return;
     }
 
@@ -101,8 +102,8 @@ export default function WidgetComparePage() {
         body: JSON.stringify({
           url: config.url.trim(),
           token: config.token.trim(),
-          dashboardId: config.dashId.trim(),
-          widgetId: config.wid.trim(),
+          dashboardId: config.dId.trim(),
+          widgetId: config.wId.trim(),
           environment: env
         })
       });
@@ -111,7 +112,7 @@ export default function WidgetComparePage() {
       if (!res.ok) throw new Error(json.error);
 
       isReg ? setRegularData(json.data) : setRefactorData(json.data);
-      setHasCompared(false);
+      setHasCompared(false); // Reset comparison state if new data is fetched
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -122,149 +123,109 @@ export default function WidgetComparePage() {
   const runComparison = () => {
     if (!regularData || !refactorData) return;
     setCompareLoading(true);
-    const report = getFullComparison(regularData, refactorData);
 
+    const report = getFullComparison(regularData, refactorData);
+    
+    setComparisonReport(report);
+    setHasCompared(true);
+    setCompareLoading(false);
+
+    // Save to global context
     setQaState({
-      inputs,
-      regularData,
-      refactorData,
+      inputs, regularData, refactorData,
       comparisonReport: report,
       phase: 'DATA_AUDIT_PENDING',
       createdAt: new Date().toISOString()
     });
 
-    setComparisonReport(report);
-    setHasCompared(true);
-    setCompareLoading(false);
+    // Scroll into view
+    setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
-  const exportToExcel = () => {
-    const headers = ['Path', 'Regular', 'Refactor', 'Status'];
+  const handleExportCSV = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const headers = ['Status', 'Path', 'Legacy Value', 'Refactor Value'].join(',');
     const rows = comparisonReport.map(r => [
-      r.path,
-      JSON.stringify(r.regularValue),
-      JSON.stringify(r.refactorValue),
-      r.isMatch ? 'MATCH' : 'DIFF'
-    ]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+      r.isMatch ? 'MATCH' : 'DIFF',
+      `"${r.path}"`,
+      `"${JSON.stringify(r.regularValue).replace(/"/g, '""')}"`,
+      `"${JSON.stringify(r.refactorValue).replace(/"/g, '""')}"`
+    ].join(',')).join('\n');
+
+    const blob = new Blob([headers + '\n' + rows], { type: 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `Audit_Report_${Date.now()}.csv`;
     link.click();
   };
 
-  const diffCount = comparisonReport.filter(r => !r.isMatch).length;
-
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans">
-      {/* MODERN NAV */}
-      <nav className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-20 font-sans">
+      
+      {/* NAVBAR */}
+      <nav className="bg-white/90 backdrop-blur-sm border-b h-16 sticky top-0 z-50 flex items-center px-8 shadow-sm">
+        <div className="max-w-7xl mx-auto w-full flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-1.5 rounded-lg text-white">
-              <Zap size={20} fill="currentColor" />
-            </div>
-            <span className="text-lg font-bold tracking-tight">Quality Lab <span className="text-blue-600">v2</span></span>
+            <Layers className="text-blue-600" size={24} />
+            <span className="font-black uppercase tracking-tighter text-xl text-slate-800">Quality Lab</span>
           </div>
-
           {hasCompared && (
-            <button
-              onClick={() => router.push('/data-audit')}
-              className="group flex items-center gap-2 bg-slate-900 hover:bg-blue-600 text-white px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-lg shadow-blue-900/10"
+            <button 
+              onClick={() => router.push('/data-audit')} 
+              className="bg-slate-900 text-white px-6 py-2 rounded-full text-xs font-black flex items-center gap-2 transition-all hover:bg-blue-600 shadow-lg shadow-slate-200"
             >
-              Continue to Data Audit
-              <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              PROCEED TO AUDIT <ArrowRight size={14} />
             </button>
           )}
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto p-6 md:p-10 space-y-8">
+      <main className="max-w-7xl mx-auto p-8 space-y-10">
         
-        {/* INPUTS SECTION */}
+        {/* INPUTS & PREVIEWS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {(['regular', 'refactor'] as Environment[]).map(env => {
             const isReg = env === 'regular';
             const data = isReg ? regularData : refactorData;
-            const loading = isReg ? regLoading : refLoading;
+            const isLoading = isReg ? regLoading : refLoading;
 
             return (
-              <div key={env} className="flex flex-col gap-4">
-                <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                  <div className={`h-1.5 w-full ${isReg ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                  <div className="p-6 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-500">
-                        <Database size={16} />
-                        {isReg ? 'Source: Regular' : 'Target: Refactor'}
-                      </h2>
-                      {data && (
-                        <span className="flex items-center gap-1 text-[10px] bg-slate-100 px-2 py-1 rounded-full font-bold">
-                          <CheckCircle2 size={12} className="text-emerald-500" /> FETCHED
-                        </span>
-                      )}
+              <div key={env} className="space-y-6">
+                <section className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
+                   <h2 className={`text-xs font-black uppercase mb-6 flex items-center gap-2 ${isReg ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    <Database size={14} /> {isReg ? 'Source: Legacy (Old)' : 'Target: Refactor (New)'}
+                  </h2>
+                  <div className="space-y-3">
+                    <input className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="API Base URL" value={isReg ? inputs.regUrl : inputs.refUrl} onChange={e => setInputs({...inputs, [isReg ? 'regUrl' : 'refUrl']: e.target.value})} />
+                    <input type="password" className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Bearer Token" value={isReg ? inputs.regToken : inputs.refToken} onChange={e => setInputs({...inputs, [isReg ? 'regToken' : 'refToken']: e.target.value})} />
+                    <div className="grid grid-cols-2 gap-4">
+                      <input className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm" placeholder="Dashboard ID" value={isReg ? inputs.regDashId : inputs.refDashId} onChange={e => setInputs({...inputs, [isReg ? 'regDashId' : 'refDashId']: e.target.value})} />
+                      <input className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm" placeholder="Widget ID" value={isReg ? inputs.regWidgetId : inputs.refWidgetId} onChange={e => setInputs({...inputs, [isReg ? 'regWidgetId' : 'refWidgetId']: e.target.value})} />
                     </div>
-
-                    <div className="space-y-3">
-                      <input
-                        placeholder="Base URL (e.g. https://api.env.com)"
-                        value={isReg ? inputs.regUrl : inputs.refUrl}
-                        onChange={e => setInputs({ ...inputs, [isReg ? 'regUrl' : 'refUrl']: e.target.value })}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-                      />
-                      <input
-                        type="password"
-                        placeholder="JWT Bearer Token"
-                        value={isReg ? inputs.regToken : inputs.refToken}
-                        onChange={e => setInputs({ ...inputs, [isReg ? 'regToken' : 'refToken']: e.target.value })}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-                      />
-                      <div className="grid grid-cols-2 gap-3">
-                        <input
-                          placeholder="Dashboard ID"
-                          value={isReg ? inputs.regDashId : inputs.refDashId}
-                          onChange={e => setInputs({ ...inputs, [isReg ? 'regDashId' : 'refDashId']: e.target.value })}
-                          className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-                        />
-                        <input
-                          placeholder="Widget ID"
-                          value={isReg ? inputs.regWidgetId : inputs.refWidgetId}
-                          onChange={e => setInputs({ ...inputs, [isReg ? 'regWidgetId' : 'refWidgetId']: e.target.value })}
-                          className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => handleFetch(env)}
-                      disabled={loading}
-                      className={`w-full py-3.5 rounded-xl text-white font-bold text-sm shadow-md transition-all active:scale-[0.98] ${
-                        isReg ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'
-                      } disabled:opacity-50`}
+                    <button 
+                      onClick={() => handleFetch(env)} 
+                      disabled={isLoading}
+                      className={`w-full py-4 rounded-2xl text-white font-black text-xs uppercase tracking-widest shadow-lg shadow-slate-200 transition-all active:scale-95 ${isReg ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'} disabled:opacity-50`}
                     >
-                      {loading ? 'Fetching...' : `Fetch ${isReg ? 'Regular' : 'Refactor'} JSON`}
+                      {isLoading ? 'Fetching Data...' : `Fetch ${env} payload`}
                     </button>
                   </div>
                 </section>
 
-                {/* RAW DATA PREVIEW */}
+                {/* JSON PREVIEW BOX (Scrollable) */}
                 {data && (
-                  <div className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
-                    <div className="flex justify-between items-center px-4 py-2 bg-slate-800/50 border-b border-slate-700">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Raw Response Preview</span>
-                      <button 
-                        onClick={() => setShowRaw(prev => ({...prev, [env]: !prev[env]}))}
-                        className="text-slate-400 hover:text-white transition-colors"
-                      >
-                        <ChevronDown size={14} className={showRaw[isReg ? 'regular' : 'refactor'] ? '' : '-rotate-90'} />
-                      </button>
+                  <div className="bg-[#0F172A] rounded-[2rem] border border-slate-800 overflow-hidden shadow-2xl">
+                    <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-[#1e293b]/50">
+                      <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2 italic">
+                        <FileJson size={14} className="text-blue-400" /> Fetched Payload
+                      </span>
+                      <span className="text-[10px] text-blue-400 font-mono italic">{Object.keys(data).length} Root Keys</span>
                     </div>
-                    {showRaw[isReg ? 'regular' : 'refactor'] && (
-                      <pre className="p-4 text-[11px] text-emerald-400 font-mono overflow-auto max-h-[300px] scrollbar-hide">
-                        {JSON.stringify(data, null, 2)}
-                      </pre>
-                    )}
+                    <pre className="p-6 text-[12px] text-emerald-400 font-mono overflow-y-auto max-h-[350px] custom-scrollbar leading-relaxed">
+                      {JSON.stringify(data, null, 2)}
+                    </pre>
                   </div>
                 )}
               </div>
@@ -273,102 +234,72 @@ export default function WidgetComparePage() {
         </div>
 
         {/* COMPARISON TRIGGER */}
-        <div className="flex flex-col items-center justify-center py-6 border-y border-slate-200 bg-white rounded-3xl shadow-sm">
-          <button
-            onClick={runComparison}
-            disabled={!regularData || !refactorData || compareLoading}
-            className="group relative flex items-center gap-3 px-10 py-5 bg-blue-600 disabled:bg-slate-200 text-white rounded-2xl font-black text-xl shadow-xl shadow-blue-200 transition-all hover:-translate-y-1 hover:shadow-blue-300 active:scale-95 disabled:shadow-none"
+        <div className="flex flex-col items-center justify-center py-12 border-y border-slate-200">
+          <button 
+            onClick={runComparison} 
+            disabled={!regularData || !refactorData || compareLoading} 
+            className="group px-16 py-6 bg-blue-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-blue-200 transition-all hover:-translate-y-1 active:scale-95 flex items-center gap-4 disabled:bg-slate-300 disabled:shadow-none"
           >
-            <Activity className={compareLoading ? 'animate-spin' : ''} />
-            {compareLoading ? 'Analyzing...' : 'Run Full Audit Comparison'}
+            <Zap className={compareLoading ? 'animate-pulse' : ''} fill="currentColor" />
+            {compareLoading ? 'ANALYIZING PAYLOADS...' : 'RUN FULL AUDIT COMPARISON'}
           </button>
-          {error && <p className="text-rose-600 mt-4 text-sm font-semibold flex items-center gap-2 bg-rose-50 px-4 py-2 rounded-full border border-rose-100">
-            <XCircle size={16} /> {error}
-          </p>}
+          {error && <p className="mt-4 text-rose-600 font-bold bg-rose-50 px-4 py-2 rounded-xl border border-rose-100 flex items-center gap-2"><XCircle size={16}/> {error}</p>}
         </div>
 
-        {/* RESULTS REPORT */}
+        {/* RESULTS SECTION */}
         {hasCompared && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div ref={resultsRef} className="space-y-10 animate-in fade-in slide-in-from-bottom-10 duration-700">
             
-            {/* STATS STRIP */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase">Total Attributes</p>
-                  <p className="text-3xl font-black">{comparisonReport.length}</p>
-                </div>
-                <Search className="text-slate-200" size={40} />
-              </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase">Matches</p>
-                  <p className="text-3xl font-black text-emerald-600">{comparisonReport.length - diffCount}</p>
-                </div>
-                <CheckCircle2 className="text-emerald-100" size={40} />
-              </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase">Mismatches</p>
-                  <p className="text-3xl font-black text-rose-600">{diffCount}</p>
-                </div>
-                <XCircle className="text-rose-100" size={40} />
-              </div>
+            {/* STATS CARDS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <StatCard label="Total Audit Points" val={comparisonReport.length} icon={<Search className="text-slate-300"/>} />
+              <StatCard label="Critical Mismatches" val={comparisonReport.filter(r => !r.isMatch).length} color="text-rose-600" icon={<XCircle className="text-rose-400"/>} />
+              <StatCard label="Identical Matches" val={comparisonReport.filter(r => r.isMatch).length} color="text-emerald-600" icon={<CheckCircle2 className="text-emerald-400"/>} />
             </div>
 
-            {/* TABLE */}
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-              <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
+            {/* AUDIT LOG TABLE (Scrollable) */}
+            <div className="bg-white border border-slate-200 rounded-[2.5rem] shadow-xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-20">
                 <div>
-                  <h3 className="font-bold text-lg">Detailed Audit Logs</h3>
-                  <p className="text-xs text-slate-500">Deep-object comparison across all nested keys</p>
+                  <h3 className="font-black text-2xl italic text-slate-800">Audit Logs</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Full key-value deep mapping</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    exportToExcel();
-                  }}
-                  className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-50"
+                <button 
+                  type="button" 
+                  onClick={handleExportCSV} 
+                  className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-slate-200"
                 >
-                  <Download size={14} /> Download CSV
+                  <Download size={14} /> Export CSV
                 </button>
               </div>
 
-              <div className="max-h-[600px] overflow-y-auto overscroll-contain scroll-smooth">
+              <div className="overflow-x-auto overflow-y-auto max-h-[600px] custom-scrollbar">
                 <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 bg-slate-100 z-10">
-                    <tr>
-                      <th className="p-4 text-[11px] font-black uppercase text-slate-500 border-b">Status</th>
-                      <th className="p-4 text-[11px] font-black uppercase text-slate-500 border-b">Object Path</th>
-                      <th className="p-4 text-[11px] font-black uppercase text-slate-500 border-b">Regular Value</th>
-                      <th className="p-4 text-[11px] font-black uppercase text-slate-500 border-b">Refactor Value</th>
+                  <thead className="sticky top-0 bg-slate-50 z-10">
+                    <tr className="border-b">
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">Status</th>
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">Object Path</th>
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">Legacy Value (Reg)</th>
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">New Value (Ref)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {comparisonReport.map((r, i) => (
-                      <tr key={i} className={`group hover:bg-slate-50 transition-colors ${!r.isMatch ? 'bg-rose-50/30' : ''}`}>
-                        <td className="p-4">
-                          {r.isMatch ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase">
-                              <CheckCircle2 size={10} /> Match
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 text-[10px] font-black uppercase">
-                              <XCircle size={10} /> Diff
-                            </span>
-                          )}
+                      <tr key={i} className={`group hover:bg-slate-50 transition-colors ${!r.isMatch ? 'bg-rose-50/20' : ''}`}>
+                        <td className="p-6 align-top">
+                           <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2.5 py-1 rounded-full border ${r.isMatch ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-rose-100 text-rose-700 border-rose-200'}`}>
+                            {r.isMatch ? <CheckCircle2 size={10}/> : <XCircle size={10}/>} {r.isMatch ? 'MATCH' : 'DIFF'}
+                          </span>
                         </td>
-                        <td className="p-4">
-                          <code className="text-[11px] font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 break-all leading-relaxed">
+                        <td className="p-6 align-top">
+                          <code className="text-[11px] font-mono font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200 group-hover:bg-white transition-colors">
                             {r.path}
                           </code>
                         </td>
-                        <td className="p-4 text-[11px] font-mono text-slate-500 max-w-[200px] truncate group-hover:whitespace-normal group-hover:break-all transition-all">
+                        <td className="p-6 align-top text-[11px] font-mono text-slate-500 break-words max-w-[250px] leading-relaxed opacity-80">
                           {JSON.stringify(r.regularValue)}
                         </td>
-                        <td className={`p-4 text-[11px] font-mono max-w-[200px] truncate group-hover:whitespace-normal group-hover:break-all transition-all ${!r.isMatch ? 'text-rose-600 font-bold' : 'text-slate-500'}`}>
+                        <td className={`p-6 align-top text-[11px] font-mono break-words max-w-[250px] leading-relaxed ${!r.isMatch ? 'text-rose-600 font-black' : 'text-slate-500 opacity-80'}`}>
                           {JSON.stringify(r.refactorValue)}
                         </td>
                       </tr>
@@ -380,6 +311,28 @@ export default function WidgetComparePage() {
           </div>
         )}
       </main>
+
+      {/* CUSTOM SCROLLBAR CSS */}
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      `}</style>
+    </div>
+  );
+}
+
+function StatCard({ label, val, icon, color = "text-slate-800" }: any) {
+  return (
+    <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm flex items-center justify-between transition-transform hover:scale-[1.02]">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">{label}</p>
+        <p className={`text-4xl font-black ${color}`}>{val}</p>
+      </div>
+      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-inner">
+        {icon}
+      </div>
     </div>
   );
 }

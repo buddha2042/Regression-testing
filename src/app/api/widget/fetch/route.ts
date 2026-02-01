@@ -1,38 +1,73 @@
 import { NextResponse } from 'next/server';
 
 function extractComparableWidget(widget: any) {
-  // Use either widget.query or widget.metadata depending on widget type
-  const querySource = widget.query || widget.metadata;
-  
-  if (!querySource) {
-    throw new Error('Invalid widget: query metadata missing');
-  }
+  const query = widget.query || {};
+  const metadata = widget.metadata || {};
+  const panels = metadata.panels || [];
 
   return {
-    // 1️⃣ Datasource (The logic needs to point to the same Cube name)
+    /* ===============================
+       CORE IDENTIFIERS
+    =============================== */
+    widgetType: widget.type || null,
+    widgetSubType: widget.subtype || null,
+
+    /* ===============================
+       DATASOURCE
+    =============================== */
     datasource: {
-      fullname: querySource.datasource?.fullname || widget.datasource?.fullname
+      fullname:
+        query.datasource?.fullname ||
+        widget.datasource?.fullname ||
+        null
     },
 
-    // 2️⃣ Query structure (Dimensions, Measures, and Filters)
-    metadata: (querySource.metadata || []).map((m: any) => ({
-      panel: m.panel || 'unknown',
-      jaql: {
-        dim: m.jaql?.dim,
-        title: m.jaql?.title,
-        datatype: m.jaql?.datatype,
-        aggregation: m.jaql?.aggregation,
-        formula: m.jaql?.formula,
-        filter: m.jaql?.filter
-      }
+
+    /* ===============================
+       PANEL STRUCTURE (ROWS / COLS / VALUES)
+    =============================== */
+    panels: panels.map((p: any) => ({
+      name: p.name,
+      items: (p.items || []).map((i: any) => ({
+        jaql: i.jaql,
+        disabled: i.disabled ?? false
+      }))
     })),
 
-    // 3️⃣ Results Behavior
-    format: querySource.format || null,
-    grandTotals: querySource.grandTotals ?? null,
-    count: 1000
+    /* ===============================
+       SORTING / TOP N
+    =============================== */
+    sort: widget.sort || null,
+    top: widget.top || null,
+
+    /* ===============================
+       DRILLDOWN
+    =============================== */
+    drilldown: widget.drilldown || null,
+
+    /* ===============================
+       CHART CONFIGURATION
+    =============================== */
+    series: widget.series || null,
+    xAxis: widget.xAxis || null,
+    yAxis: widget.yAxis || null,
+    breakBy: widget.breakBy || null,
+
+    /* ===============================
+       STYLE & FORMATTING
+    =============================== */
+    style: widget.style || null,
+    color: widget.color || null,
+    conditionalFormatting: widget.conditionalFormatting || null,
+
+    /* ===============================
+       MISC IMPORTANT FLAGS
+    =============================== */
+    enabled: widget.enabled ?? true,
+    visible: widget.visible ?? true
   };
 }
+
 
 export async function POST(req: Request) {
   try {
