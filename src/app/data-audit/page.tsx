@@ -5,7 +5,7 @@ import { useQa } from '@/context/QaContext';
 import { 
   Database, Zap, FileJson, CheckCircle2, XCircle, 
   ArrowRight, Activity, Layers, ChevronRight, RefreshCcw,
-  Download, Table as TableIcon, Equal, Unequal
+  Download, Table as TableIcon, Check, AlertTriangle
 } from 'lucide-react';
 
 const prepareJaqlBody = (widgetJson: any) => {
@@ -26,7 +26,6 @@ export default function DataAuditPage() {
   const [loading, setLoading] = useState({ regular: false, refactor: false });
   const [error, setError] = useState('');
   
-  // New States for Side-by-Side
   const [comparison, setComparison] = useState<{
     match: boolean;
     regCount: number;
@@ -35,13 +34,23 @@ export default function DataAuditPage() {
   } | null>(null);
 
   const fetchData = async (env: 'regular' | 'refactor') => {
-    const widgetJson = env === 'regular' ? regularData : refactorData;
-    const config = env === 'regular' ? 
-      { url: inputs?.regUrl, token: inputs?.regToken } : 
-      { url: inputs?.refUrl, token: inputs?.refToken };
+    // 1. CHOOSE THE CORRECT TOKEN BASED ON THE ENVIRONMENT
+    const isRegular = env === 'regular';
+    const widgetJson = isRegular ? regularData : refactorData;
+    
+    const config = isRegular 
+      ? { url: inputs?.regUrl, token: inputs?.regToken, label: "LEGACY (OLD)" } 
+      : { url: inputs?.refUrl, token: inputs?.refToken, label: "REFACTOR (NEW)" };
 
-    if (!widgetJson || !config.url) {
-      setError(`Configuration for ${env} environment is missing.`);
+    // --- LOGGING TO PROVE THEY ARE SEPARATE ---
+    console.group(`📡 Data Fetch: ${config.label}`);
+    console.log(`Target Environment: ${env}`);
+    console.log(`URL being used: ${config.url}`);
+    console.log(`Token being used: ${config.token ? 'EXISTS (starts with ' + config.token.substring(0, 10) + '...)' : 'MISSING'}`);
+    console.groupEnd();
+
+    if (!widgetJson || !config.url || !config.token) {
+      setError(`Credentials (URL/Token) for ${config.label} are missing. Go back to Step 1.`);
       return;
     }
 
@@ -55,7 +64,7 @@ export default function DataAuditPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           baseUrl: config.url,
-          token: config.token,
+          token: config.token, // This is the specific token for this environment
           datasource: widgetJson.datasource.fullname,
           jaql: jaqlBody
         })
@@ -66,7 +75,7 @@ export default function DataAuditPage() {
 
       setResults(prev => ({ ...prev, [env]: json.data }));
     } catch (e: any) {
-      setError(`${env.toUpperCase()} Error: ${e.message}`);
+      setError(`${config.label} Error: ${e.message}`);
     } finally {
       setLoading(prev => ({ ...prev, [env]: false }));
     }
@@ -128,14 +137,14 @@ export default function DataAuditPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Data_Audit_Comparison_${Date.now()}.csv`;
+    link.download = `Data_Audit_Report_${Date.now()}.csv`;
     link.click();
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-20 font-sans">
       
-      {/* HEADER */}
+      {/* NAVBAR */}
       <div className="bg-white border-b px-8 py-10 shadow-sm">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div>
@@ -143,65 +152,67 @@ export default function DataAuditPage() {
               <span className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Phase 2</span>
               <h1 className="text-3xl font-black text-slate-900 tracking-tight italic">Data Audit</h1>
             </div>
-            <p className="text-slate-500 text-sm font-medium">Executing and comparing raw result values side-by-side.</p>
+            <p className="text-slate-500 text-sm font-medium">Comparing Legacy vs Refactor results using independent authentication tokens.</p>
           </div>
         </div>
       </div>
 
       <main className="max-w-7xl mx-auto p-8 space-y-10">
         
-        {/* CONTEXT SECTION */}
+        {/* CONNECTION CONTEXT SECTION */}
         <section className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
           <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-6 flex items-center gap-2 italic">
             <Layers size={14} /> Connection Context
           </h2>
           <div className="grid grid-cols-2 gap-12">
-            <ContextDetail label="Legacy Environment" url={inputs?.regUrl} ds={regularData?.datasource?.fullname} />
-            <ContextDetail label="Refactor Environment" url={inputs?.refUrl} ds={refactorData?.datasource?.fullname} />
+            <ContextDetail label="Legacy Environment (OLD)" url={inputs?.regUrl} ds={regularData?.datasource?.fullname} />
+            <ContextDetail label="Refactor Environment (NEW)" url={inputs?.refUrl} ds={refactorData?.datasource?.fullname} />
           </div>
         </section>
 
-        {/* FETCHING BUTTONS */}
+        {/* FETCH BUTTONS */}
         <div className="grid grid-cols-2 gap-8">
           {(['regular', 'refactor'] as const).map(env => (
             <button key={env} onClick={() => fetchData(env)} disabled={loading[env]}
               className={`w-full py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg
-                ${env === 'regular' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'} text-white disabled:opacity-50`}
+                ${env === 'regular' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-100' : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-100'} text-white disabled:opacity-50`}
             >
               {loading[env] ? <Activity className="animate-spin" /> : <RefreshCcw size={16} />}
-              Fetch {env} result set
+              Fetch {env === 'regular' ? 'Legacy' : 'Refactor'} Data
             </button>
           ))}
         </div>
 
-        {/* JSON PREVIEWS (HIDDEN AFTER COMPARISON TO SAVE SPACE) */}
+        {/* RAW PREVIEWS */}
         {!comparison && (
           <div className="grid grid-cols-2 gap-8">
             {(['regular', 'refactor'] as const).map(env => (
               <div key={env} className="bg-[#0F172A] rounded-[2.5rem] h-[300px] overflow-hidden shadow-2xl flex flex-col border border-slate-800">
                 <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex justify-between">
-                  <span className="text-[10px] font-black text-slate-400 uppercase italic flex items-center gap-2"><FileJson size={14} className="text-blue-400" /> {env}_raw.json</span>
+                  <span className="text-[10px] font-black text-slate-400 uppercase italic flex items-center gap-2">
+                    <FileJson size={14} className="text-blue-400" /> {env}_payload.json
+                  </span>
                 </div>
                 <pre className="p-6 text-[11px] text-emerald-400 font-mono overflow-auto flex-1 custom-scrollbar">
-                  {results[env] ? JSON.stringify(results[env].values, null, 2) : "// Awaiting data..."}
+                  {results[env] ? JSON.stringify(results[env].values, null, 2) : "// Data not yet loaded..."}
                 </pre>
               </div>
             ))}
           </div>
         )}
 
-        {/* TRIGGER */}
+        {/* RUN AUDIT BUTTON */}
         <div className="flex flex-col items-center py-6 border-y border-slate-200">
           <button 
             onClick={runDataComparison}
             disabled={!results.regular || !results.refactor}
             className="group bg-blue-600 text-white px-16 py-6 rounded-[2.5rem] font-black text-xl shadow-2xl shadow-blue-200 hover:-translate-y-1 transition-all disabled:bg-slate-300 flex items-center gap-4"
           >
-            <Zap fill="currentColor" /> RUN SIDE-BY-SIDE AUDIT
+            <Zap fill="currentColor" /> RUN DATA COMPARISON
           </button>
         </div>
 
-        {/* COMPARISON RESULTS TABLE */}
+        {/* SIDE BY SIDE RESULTS */}
         {comparison && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-10 duration-700">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -214,13 +225,13 @@ export default function DataAuditPage() {
               <div className="p-8 border-b border-slate-100 flex justify-between items-center">
                 <div>
                   <h3 className="font-black text-2xl italic text-slate-800">Side-by-Side Comparison</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Row-level data mapping and diff check</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Row-by-row deep value audit</p>
                 </div>
                 <button 
                   onClick={handleExportCSV}
                   className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-slate-200"
                 >
-                  <Download size={14} /> Export to Excel (CSV)
+                  <Download size={14} /> Download CSV Report
                 </button>
               </div>
 
@@ -228,35 +239,35 @@ export default function DataAuditPage() {
                 <table className="w-full text-left border-collapse">
                   <thead className="sticky top-0 bg-slate-50 z-10 border-b">
                     <tr>
-                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 w-20">Row</th>
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400 w-20 text-center">#</th>
                       <th className="p-6 text-[10px] font-black uppercase text-slate-400 w-32">Status</th>
-                      <th className="p-6 text-[10px] font-black uppercase text-slate-400">Legacy Result</th>
-                      <th className="p-6 text-[10px] font-black uppercase text-slate-400">Refactor Result</th>
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400">Legacy Result (OLD)</th>
+                      <th className="p-6 text-[10px] font-black uppercase text-slate-400">Refactor Result (NEW)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {comparison.diffRows.map((row) => (
-                      <tr key={row.index} className={`group hover:bg-slate-50 transition-colors ${!row.isRowMatch ? 'bg-rose-50/30' : ''}`}>
-                        <td className="p-6 text-xs font-bold text-slate-400">#{row.index + 1}</td>
+                      <tr key={row.index} className={`group hover:bg-slate-50 transition-colors ${!row.isRowMatch ? 'bg-rose-50/40' : ''}`}>
+                        <td className="p-6 text-xs font-bold text-slate-300 text-center">{row.index + 1}</td>
                         <td className="p-6">
                           {row.isRowMatch ? (
                             <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
-                              <Equal size={10} /> MATCH
+                              <Check size={10} /> MATCH
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-full bg-rose-100 text-rose-700 border border-rose-200">
-                              <Unequal size={10} /> MISMATCH
+                              <AlertTriangle size={10} /> MISMATCH
                             </span>
                           )}
                         </td>
                         <td className="p-6 align-top">
                           <pre className={`text-[11px] font-mono leading-relaxed ${!row.isRowMatch ? 'text-rose-600' : 'text-slate-600'}`}>
-                            {row.reg ? JSON.stringify(row.reg, null, 2) : <span className="italic text-slate-300">Empty</span>}
+                            {row.reg ? JSON.stringify(row.reg, null, 2) : <span className="italic text-slate-300 text-[10px]">NULL</span>}
                           </pre>
                         </td>
                         <td className="p-6 align-top">
                           <pre className={`text-[11px] font-mono leading-relaxed ${!row.isRowMatch ? 'text-rose-600 font-bold' : 'text-slate-600'}`}>
-                            {row.ref ? JSON.stringify(row.ref, null, 2) : <span className="italic text-slate-300">Empty</span>}
+                            {row.ref ? JSON.stringify(row.ref, null, 2) : <span className="italic text-slate-300 text-[10px]">NULL</span>}
                           </pre>
                         </td>
                       </tr>
@@ -286,9 +297,9 @@ export default function DataAuditPage() {
 function ContextDetail({ label, url, ds }: any) {
   return (
     <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-      <h4 className="font-black text-slate-800 text-sm uppercase tracking-tighter italic mb-2">{label}</h4>
-      <p className="text-[11px] font-mono text-slate-500 truncate">URL: {url || 'N/A'}</p>
-      <p className="text-[11px] font-mono text-blue-600 truncate font-bold">DS: {ds || 'N/A'}</p>
+      <h4 className="font-black text-slate-800 text-[10px] uppercase mb-2 tracking-widest">{label}</h4>
+      <p className="text-[11px] font-mono text-slate-500 truncate mb-1">Base: {url || 'N/A'}</p>
+      <p className="text-[11px] font-mono text-blue-600 truncate font-bold">Datasource: {ds || 'N/A'}</p>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 'use client';
 
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 
-/* ================================
-   Types
-================================ */
+/* ============================================================
+   TYPES & INTERFACES
+   ============================================================ */
 
 export interface ComparisonItem {
   path: string;
@@ -34,32 +34,22 @@ export type QaPhase =
   | 'DATA_COMPARE_DONE';
 
 export interface QaState {
-  /* ============================
-     Connection & Auth
-  ============================ */
+  /* Connection & Auth */
   inputs: QaInputs | null;
   jwtToken: string | null;
 
-  /* ============================
-     Widget Logic (Phase 1)
-  ============================ */
+  /* Widget Logic (Phase 1) */
   regularData: any | null;
   refactorData: any | null;
   comparisonReport: ComparisonItem[];
 
-  /* ============================
-     Phase Control
-  ============================ */
+  /* Phase Control */
   phase: QaPhase;
 
-  /* ============================
-     Metadata
-  ============================ */
+  /* Metadata */
   createdAt: string | null;
 
-  /* ============================
-     Future: Data Compare
-  ============================ */
+  /* Data Comparison Results (Phase 2) */
   dataCompareResult?: {
     regularRowCount: number;
     refactorRowCount: number;
@@ -67,70 +57,85 @@ export interface QaState {
   };
 }
 
-/* ================================
-   Context Shape
-================================ */
+/* ============================================================
+   CONTEXT SHAPE
+   ============================================================ */
 
 interface QaContextType extends QaState {
-  /** Full replace – use sparingly */
+  /** Replaces the entire state object */
   setQaState: React.Dispatch<React.SetStateAction<QaState>>;
 
-  /** Partial merge – preferred */
+  /** 
+   * Preferred Method: Merges changes into the current state.
+   * Special handling for 'inputs' to prevent token data-loss.
+   */
   updateQaState: (partial: Partial<QaState>) => void;
 
-  /** Reset everything */
+  /** Resets the entire lab back to INIT state */
   resetQa: () => void;
 }
 
-/* ================================
-   Default State
-================================ */
+/* ============================================================
+   DEFAULT STATE
+   ============================================================ */
 
 const defaultState: QaState = {
   inputs: null,
   jwtToken: null,
-
   regularData: null,
   refactorData: null,
   comparisonReport: [],
-
   phase: 'INIT',
   createdAt: null
 };
 
-/* ================================
-   Context Creation
-================================ */
+/* ============================================================
+   CONTEXT CREATION
+   ============================================================ */
 
 const QaContext = createContext<QaContextType | null>(null);
 
-/* ================================
-   Provider
-================================ */
+/* ============================================================
+   PROVIDER COMPONENT
+   ============================================================ */
 
-export const QaProvider = ({ children }: { children: React.ReactNode }) => {
+export const QaProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<QaState>(defaultState);
+
+  /**
+   * updateQaState Fix:
+   * Standard React shallow merging ({...prev, ...partial}) wipes out
+   * nested objects. If we only update inputs.regUrl, we would lose
+   * inputs.regToken. This logic ensures nested 'inputs' are merged properly.
+   */
+  const updateQaState = (partial: Partial<QaState>) => {
+    setState((prev) => {
+      // 1. Create a shallow copy of the state with the top-level changes
+      const newState = { ...prev, ...partial };
+
+      // 2. If 'inputs' is being updated, merge it deeply with the old inputs
+      if (partial.inputs && prev.inputs) {
+        newState.inputs = {
+          ...prev.inputs,
+          ...partial.inputs,
+        };
+      }
+
+      return newState;
+    });
+  };
+
+  const resetQa = () => {
+    setState(defaultState);
+  };
 
   return (
     <QaContext.Provider
       value={{
         ...state,
-
-        /* Full replace (advanced use only) */
         setQaState: setState,
-
-        /* Safe partial update (default) */
-        updateQaState: (partial: Partial<QaState>) => {
-          setState(prev => ({
-            ...prev,
-            ...partial
-          }));
-        },
-
-        /* Reset QA flow */
-        resetQa: () => {
-          setState(defaultState);
-        }
+        updateQaState,
+        resetQa,
       }}
     >
       {children}
@@ -138,9 +143,9 @@ export const QaProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-/* ================================
-   Hook
-================================ */
+/* ============================================================
+   CUSTOM HOOK
+   ============================================================ */
 
 export const useQa = () => {
   const context = useContext(QaContext);
